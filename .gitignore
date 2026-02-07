@@ -13,3 +13,11 @@ __pycache__/
 # aug_data/
 *network_param.txt
 .DS_Store
+
+#data
+data/Beauty/
+data/Cell_Phones_and_Accessories/
+data/Raw/
+data/Sports_and_Outdoors/
+data/Yelp/
+
