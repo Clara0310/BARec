@@ -14,7 +14,7 @@ import copy
 import time
 
 # Ks = [1, 5, 10, 20, 50, 100]
-Ks = [1, 5, 10]
+Ks = [5, 10, 20]
 cores = multiprocessing.cpu_count() #// 2
 
 # Set color for tqdm
