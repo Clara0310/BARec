@@ -41,7 +41,7 @@ pip install scipy==1.4.1
 To test the available TF GPUs, please run the following command:
 
 ```bash
-python tf_gpus_detec.py
+python tf_gpus_detect.py
 ```
 
 ## Datasets Preparation
