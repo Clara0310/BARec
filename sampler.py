@@ -1,18 +1,22 @@
 import numpy as np
 from multiprocessing import Process, Queue
 
-
 def random_neq(l, r, s): #maybe redundant items
     t = np.random.randint(l, r)
     while t in s:
         t = np.random.randint(l, r)
     return t
 
-
 def sample_function(del_num, user_train, origin_train, usernum, itemnum, batch_size, maxlen, result_queue, SEED):
+    # === [FIX START] 修復 KeyError ===
+    # 建立有效使用者清單，避免抽到不存在的 ID
+    valid_users = [u for u in user_train.keys() if len(user_train[u]) > 1]
+    # === [FIX END] ===
+
     def sample():
-        user = np.random.randint(1, usernum + 1) # exclude usernum+1
-        while len(user_train[user]) <= 1: user = np.random.randint(1, usernum + 1)
+        # === [FIX START] 從有效清單中抽樣 ===
+        user = np.random.choice(valid_users)
+        # === [FIX END] ===
         
         # aug/original seq
         seq = np.zeros([maxlen], dtype=np.int32)
@@ -22,7 +26,7 @@ def sample_function(del_num, user_train, origin_train, usernum, itemnum, batch_s
         idx = maxlen - 1
         ts = set(user_train[user])
 
-        inter_len = len(user_train[user][:-1]) - del_num if (len(user_train[user][:-1]) - del_num) > 0 else 1 # only use the part of item as pos and neg
+        inter_len = len(user_train[user][:-1]) - del_num if (len(user_train[user][:-1]) - del_num) > 0 else 1 
         inter_len_revs = len(user_train[user][1:]) - del_num if (len(user_train[user][1:]) - del_num) > 0 else 1
         inter_len_origin = len(origin_train[user][:-1]) - del_num if (len(origin_train[user][:-1]) - del_num) > 0 else 1
 
@@ -77,7 +81,6 @@ def sample_function(del_num, user_train, origin_train, usernum, itemnum, batch_s
             idx_origin -= 1
             if idx_origin == -1: break
 
-        # len(seq)=len(pos)=len(neg), pos means the label of seq[1:], neg means the items not existing in seq
         return (user, seq, pos, neg, seq_revs, pos_revs, seq_origin, pos_origin, neg_origin)
 
     np.random.seed(SEED)
