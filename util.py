@@ -15,7 +15,10 @@ import time
 
 # Ks = [1, 5, 10, 20, 50, 100]
 Ks = [5, 10, 20]
-cores = multiprocessing.cpu_count() #// 2
+
+#cores = multiprocessing.cpu_count() #// 2
+#強制只用 4 核，非常省記憶體
+cores = 4
 
 # Set color for tqdm
 def set_color(log, color, highlight=True):
@@ -177,7 +180,9 @@ def data_augment(model, dataset, args, sess, gen_num):
             batch_item_idx.append(item_idx)
             batch_u.append(u)
 
-            if (u_ind + 1) % (args.batch_size*16) == 0 or u_ind + 1 == len(all_users):
+            #if (u_ind + 1) % (args.batch_size*16) == 0 or u_ind + 1 == len(all_users):
+            # 讓它乖乖用我們設定的 batch_size (64)，不要放大
+            if (u_ind + 1) % args.batch_size == 0 or u_ind + 1 == len(all_users):
                 predictions = model.predict(sess, batch_u, batch_seq)
                 # re-assign generate top-1 items as pseudo-prior items
                 for batch_ind in range(len(batch_item_idx)):
@@ -320,7 +325,9 @@ def evaluate(model, dataset, args, sess, testorvalid):
         batch_item_idx.append(item_idx)
         batch_u.append(u)
 
-        if len(batch_u) % (args.batch_size*16) == 0 or u_ind == len(eval_data):
+        #if len(batch_u) % (args.batch_size*16) == 0 or u_ind == len(eval_data):
+        # 同樣移除 *16，防止評估時記憶體爆炸
+        if len(batch_u) % args.batch_size == 0 or u_ind == len(eval_data):
             predictions = model.predict(sess, batch_u, batch_seq)
             for pred_ind in range(predictions.shape[0]):
                 all_predictions_results.append(predictions[pred_ind])
@@ -531,12 +538,16 @@ def evaluate(model, dataset, args, sess, testorvalid):
             long_seq_results["hit_ratio"] += re["hit_ratio"]
             long_seq_results["auc"] += re["auc"]
             long_seq_results["mrr"] += re["mrr"]
-        long_seq_results["precision"] /= len(long_seq_test_indices)
-        long_seq_results["recall"] /= len(long_seq_test_indices)
-        long_seq_results["ndcg"] /= len(long_seq_test_indices)
-        long_seq_results["hit_ratio"] /= len(long_seq_test_indices)
-        long_seq_results["auc"] /= len(long_seq_test_indices)
-        long_seq_results["mrr"] /= len(long_seq_test_indices)
+            
+        # 🟢 修改後：加了 if 判斷，只有人數大於 0 才計算
+        if len(long_seq_test_indices) > 0:
+            long_seq_results["precision"] /= len(long_seq_test_indices)
+            long_seq_results["recall"] /= len(long_seq_test_indices)
+            long_seq_results["ndcg"] /= len(long_seq_test_indices)
+            long_seq_results["hit_ratio"] /= len(long_seq_test_indices)
+            long_seq_results["auc"] /= len(long_seq_test_indices)
+            long_seq_results["mrr"] /= len(long_seq_test_indices)
+            
         print(f"testing #of short seq users with >= 50 training points: {len(long_seq_test_indices)}")
         return results, short_seq_results, short37_seq_results, short720_seq_results, medium2050_seq_results, long_seq_results, all_predictions_results_output
     else:
