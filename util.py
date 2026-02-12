@@ -325,9 +325,13 @@ def evaluate(model, dataset, args, sess, testorvalid):
         batch_item_idx.append(item_idx)
         batch_u.append(u)
 
+        # 【修改點 1】強制設定一個很小的 Batch Size (例如 10)
+        # 對全排名來說，一次算 10 個人已經很極限了，這樣絕對不會爆記憶體
+        SAFE_EVAL_BATCH_SIZE = 10
+        
         #if len(batch_u) % (args.batch_size*16) == 0 or u_ind == len(eval_data):
         # 同樣移除 *16，防止評估時記憶體爆炸
-        if len(batch_u) % args.batch_size == 0 or u_ind == len(eval_data):
+        if len(batch_u) >= SAFE_EVAL_BATCH_SIZE or u_ind == len(eval_data):
             predictions = model.predict(sess, batch_u, batch_seq)
             for pred_ind in range(predictions.shape[0]):
                 all_predictions_results.append(predictions[pred_ind])
@@ -439,14 +443,28 @@ def evaluate(model, dataset, args, sess, testorvalid):
 
     # overall 
     batch_data = zip(rankeditems_list, test_indices, scale_pred_list, test_allitems)
-    batch_result = pool.map(eval_one_interaction, batch_data)
-    for re in batch_result:
+    
+    # batch_result = pool.map(eval_one_interaction, batch_data)
+    # for re in batch_result:
+    #     results["precision"] += re["precision"]
+    #     results["recall"] += re["recall"]
+    #     results["ndcg"] += re["ndcg"]
+    #     results["hit_ratio"] += re["hit_ratio"]
+    #     results["auc"] += re["auc"]
+    #     results["mrr"] += re["mrr"]
+    
+    # 【修改】改用普通迴圈，不使用多核心
+    for data_point in batch_data:
+        re = eval_one_interaction(data_point) # 直接呼叫函式計算
+
         results["precision"] += re["precision"]
         results["recall"] += re["recall"]
         results["ndcg"] += re["ndcg"]
         results["hit_ratio"] += re["hit_ratio"]
         results["auc"] += re["auc"]
         results["mrr"] += re["mrr"]
+        
+        
     results["precision"] /= len(eval_data)
     results["recall"] /= len(eval_data)
     results["ndcg"] /= len(eval_data)
@@ -458,14 +476,20 @@ def evaluate(model, dataset, args, sess, testorvalid):
     if args.evalnegsample != -1:
         # seq <= 3
         short_seq_batch_data = zip(short_seq_rankeditems_list, short_seq_test_indices, short_seq_scale_pred_list, short_seq_test_allitems)
-        short_seq_batch_result = pool.map(eval_one_interaction, short_seq_batch_data)
-        for re in short_seq_batch_result:
+        #short_seq_batch_result = pool.map(eval_one_interaction, short_seq_batch_data)
+        #for re in short_seq_batch_data:
+        
+        # 【修改】改用普通迴圈，不使用多核心
+        for data_point in short_seq_batch_data:
+            re = eval_one_interaction(data_point) # 直接呼叫函式計算
             short_seq_results["precision"] += re["precision"]
             short_seq_results["recall"] += re["recall"]
             short_seq_results["ndcg"] += re["ndcg"]
             short_seq_results["hit_ratio"] += re["hit_ratio"]
             short_seq_results["auc"] += re["auc"]
             short_seq_results["mrr"] += re["mrr"]
+            
+            
         short_seq_results["precision"] /= len(short_seq_test_indices)
         short_seq_results["recall"] /= len(short_seq_test_indices)
         short_seq_results["ndcg"] /= len(short_seq_test_indices)
@@ -476,8 +500,11 @@ def evaluate(model, dataset, args, sess, testorvalid):
 
         # 3 < seq <= 7
         short37_seq_batch_data = zip(short37_seq_rankeditems_list, short37_seq_test_indices, short37_seq_scale_pred_list, short37_seq_test_allitems)
-        short37_seq_batch_result = pool.map(eval_one_interaction, short37_seq_batch_data)
-        for re in short37_seq_batch_result:
+        #short37_seq_batch_result = pool.map(eval_one_interaction, short37_seq_batch_data)
+        
+        
+        for data_point in short37_seq_batch_data:
+            re = eval_one_interaction(data_point) # 直接呼叫函式計算
             short37_seq_results["precision"] += re["precision"]
             short37_seq_results["recall"] += re["recall"]
             short37_seq_results["ndcg"] += re["ndcg"]
@@ -494,8 +521,10 @@ def evaluate(model, dataset, args, sess, testorvalid):
 
         # 7 < seq <= 20
         short720_seq_batch_data = zip(short720_seq_rankeditems_list, short720_seq_test_indices, short720_seq_scale_pred_list, short720_seq_test_allitems)
-        short720_seq_batch_result = pool.map(eval_one_interaction, short720_seq_batch_data)
-        for re in short720_seq_batch_result:
+        #short720_seq_batch_result = pool.map(eval_one_interaction, short720_seq_batch_data)
+        
+        for data_point in short720_seq_batch_data:
+            re = eval_one_interaction(data_point) # 直接呼叫函式計算
             short720_seq_results["precision"] += re["precision"]
             short720_seq_results["recall"] += re["recall"]
             short720_seq_results["ndcg"] += re["ndcg"]
@@ -512,8 +541,10 @@ def evaluate(model, dataset, args, sess, testorvalid):
 
         # 20 < seq <= 50
         medium2050_seq_batch_data = zip(medium2050_seq_rankeditems_list, medium2050_seq_test_indices, medium2050_seq_scale_pred_list, medium2050_seq_test_allitems)
-        medium2050_seq_batch_result = pool.map(eval_one_interaction, medium2050_seq_batch_data)
-        for re in medium2050_seq_batch_result:
+        #medium2050_seq_batch_result = pool.map(eval_one_interaction, medium2050_seq_batch_data)
+        
+        for data_point in medium2050_seq_batch_data:
+            re = eval_one_interaction(data_point) # 直接呼叫函式計算
             medium2050_seq_results["precision"] += re["precision"]
             medium2050_seq_results["recall"] += re["recall"]
             medium2050_seq_results["ndcg"] += re["ndcg"]
@@ -530,8 +561,10 @@ def evaluate(model, dataset, args, sess, testorvalid):
 
         # 50 < seq 
         long_seq_batch_data = zip(long_seq_rankeditems_list, long_seq_test_indices, long_seq_scale_pred_list, long_seq_test_allitems)
-        long_seq_batch_result = pool.map(eval_one_interaction, long_seq_batch_data)
-        for re in long_seq_batch_result:
+        #long_seq_batch_result = pool.map(eval_one_interaction, long_seq_batch_data)
+        
+        for data_point in long_seq_batch_data:
+            re = eval_one_interaction(data_point) # 直接呼叫函式計算
             long_seq_results["precision"] += re["precision"]
             long_seq_results["recall"] += re["recall"]
             long_seq_results["ndcg"] += re["ndcg"]
