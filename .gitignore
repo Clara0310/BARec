@@ -24,6 +24,13 @@ data/Grocery_and_Gourmet_Food/
 /aug_data/
 /data/
 /reversed_models/
+
+#log
+barec_finetune_Grocery_and_Gourmet_Food_fullrank.log
+barec_pretrain_Grocery_and_Gourmet_Food_gen.log
+barec_pretrain_Sports_and_Outdoors_gen.log
+nohup.out
+
 #虛擬環境
 .venv/
 __pycache__/
