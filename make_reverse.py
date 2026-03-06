@@ -1,7 +1,7 @@
 import os
 
 # 設定你的資料集名稱
-DATASET = "Grocery_and_Gourmet_Food"
+DATASET = "Sports_and_Outdoors"
 DATA_DIR = f"./data/{DATASET}"
 
 # 定義要轉換的檔案對應關係

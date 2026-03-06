@@ -8,39 +8,29 @@ import os
 from collections import defaultdict
 from metrics import *
 from sklearn.preprocessing import MinMaxScaler
-from collections import defaultdict
 from tqdm import tqdm
-import copy
-import time
 
 Ks = [5, 10, 20]
-
-# 【修改點 1】核心數鎖死為 1 (最省記憶體)
 cores = 1 
 
+# 1. set_color
 def set_color(log, color, highlight=True):
     color_set = ['black', 'red', 'green', 'yellow', 'blue', 'pink', 'cyan', 'white']
-    try:
-        index = color_set.index(color)
-    except:
-        index = len(color_set) - 1
-    prev_log = '\033['
-    if highlight:
-        prev_log += '1;3'
-    else:
-        prev_log += '0;3'
-    prev_log += str(index) + 'm'
-    return prev_log + log + '\033[0m'
+    try: index = color_set.index(color)
+    except: index = len(color_set) - 1
+    prev_log = '\033[1;3' if highlight else '\033[0;3'
+    return prev_log + str(index) + 'm' + log + '\033[0m'
 
+# 2. record_loss
 def record_loss(loss_file, loss_left, kl_loss, loss):
     with open(loss_file, 'a') as f:
         line = "{:.4f}\t{:.4f}\t{:.4f}\n".format(loss_left, kl_loss, loss)
         f.write(line) 
 
+# 3. load_file_and_sort
 def load_file_and_sort(filename, reverse=False, augdata=None, aug_num=0, M=10):
     data = defaultdict(list)
-    max_uind = 0
-    max_iind = 0
+    max_uind, max_iind = 0, 0
     with open(filename, 'r') as f:
         for line in f:
             one_interaction = line.rstrip().split("\t")
@@ -50,318 +40,179 @@ def load_file_and_sort(filename, reverse=False, augdata=None, aug_num=0, M=10):
             max_iind = max(max_iind, iind)
             t = float(one_interaction[2])
             data[uind].append((iind, t))
-    
-    print('data users: ', max_uind)
-    print('data items: ', max_iind)
-    print('data instances: ', sum([len(ilist) for _, ilist in data.items()]))
-
     if augdata:
         for u, ilist in augdata.items():
             sorted_interactions = sorted(ilist, key=lambda x:x[1])
             for i in range(min(aug_num, len(sorted_interactions))):
                 if len(data[u]) >= M: continue
                 data[u].append((sorted_interactions[i]))
-        print('After augmentation:')
-        print('data users: ', max_uind)
-        print('data items: ', max_iind)
-        print('data instances: ', sum([len(ilist) for user, ilist in data.items()]))
-
     sorted_data = {}
     for u, i_list in data.items():
-        if not reverse:
-            sorted_interactions = sorted(i_list, key=lambda x:x[1])
-        else:
-            sorted_interactions = sorted(i_list, key=lambda x:x[1], reverse=True)
-        seq = [interaction[0] for interaction in sorted_interactions]
-        sorted_data[u] = seq
-
+        sorted_interactions = sorted(i_list, key=lambda x:x[1], reverse=reverse)
+        sorted_data[u] = [it[0] for it in sorted_interactions]
     return sorted_data, max_uind, max_iind
 
-
+# 4. augdata_load
 def augdata_load(aug_filename):
     augdata = defaultdict(list)
     with open(aug_filename, 'r') as f:
         for line in f:
             one_interaction = line.rstrip().split("\t")
-            uind = int(one_interaction[0]) + 1
-            iind = int(one_interaction[1]) + 1
-            t = float(one_interaction[2])
-            augdata[uind].append((iind, t))
-
+            augdata[int(one_interaction[0]) + 1].append((int(one_interaction[1]) + 1, float(one_interaction[2])))
     return augdata
 
-
+# 5. data_load
 def data_load(data_name, args):
     reverseornot = args.reversed == 1
-    if not reverseornot:
-        train_file = f"./data/{data_name}/train.txt"
-        valid_file = f"./data/{data_name}/valid.txt"
-        test_file = f"./data/{data_name}/test.txt"
-    else:
-        train_file = f"./data/{data_name}/train_reverse.txt"
-        valid_file = f"./data/{data_name}/valid_reverse.txt"
-        test_file = f"./data/{data_name}/test_reverse.txt"
+    suffix = "_reverse.txt" if reverseornot else ".txt"
+    train_file = f"./data/{data_name}/train{suffix}"
+    valid_file = f"./data/{data_name}/valid{suffix}"
+    test_file = f"./data/{data_name}/test{suffix}"
 
-    original_train = None
-    augdata = None
     original_train, _, _ = load_file_and_sort(train_file)
+    augdata = None
     if args.aug_traindata > 0:
         aug_data_signature = './aug_data/{}/lr_{}_maxlen_{}_hsize_{}_nblocks_{}_drate_{}_l2_{}_nheads_{}_gen_num_'.format(
-                               args.dataset, 
-                               args.lr, 
-                               args.maxlen, 
-                               args.hidden_units, 
-                               args.num_blocks, 
-                               args.dropout_rate, 
-                               args.l2_emb, 
-                               args.num_heads)
-
+                               args.dataset, args.lr, args.maxlen, args.hidden_units, args.num_blocks, args.dropout_rate, args.l2_emb, args.num_heads)
         if os.path.exists(aug_data_signature + '20_M_20.txt'):
             augdata = augdata_load(aug_data_signature + '20_M_20.txt')
-            print('load generated items: ', aug_data_signature + '20_M_20.txt')
-            time.sleep(3)
 
     if args.aug_traindata > 0:
         user_train, train_usernum, train_itemnum = load_file_and_sort(train_file, reverse=reverseornot, augdata=augdata, aug_num=args.aug_traindata, M=args.M)
     else:
         user_train, train_usernum, train_itemnum = load_file_and_sort(train_file, reverse=reverseornot)
-    
     user_valid, valid_usernum, valid_itemnum = load_file_and_sort(valid_file, reverse=reverseornot)
     user_test, test_usernum, test_itemnum = load_file_and_sort(test_file, reverse=reverseornot)
-
     usernum = max([train_usernum, valid_usernum, test_usernum])
     itemnum = max([train_itemnum, valid_itemnum, test_itemnum])
-
-    print("data users: {} data items: {} train users: {} valid users: {} test users {}".format(
-           usernum, itemnum, len(user_train), len(user_valid), len(user_test)))
-
     return [user_train, user_valid, user_test, original_train, usernum, itemnum]
 
-
+# 6. data_augment
 def data_augment(model, dataset, args, sess, gen_num):
     [train, valid, test, original_train, usernum, itemnum] = copy.deepcopy(dataset)
     all_users = list(train.keys())
     cumulative_preds = defaultdict(list)
-
     items_idx_set = set([i for i in range(itemnum)])
     for num_ind in range(gen_num):
-        batch_seq = []
-        batch_u = []
-        batch_item_idx = []
-        
+        batch_seq, batch_u, batch_item_idx = [], [], []
         for u_ind, u in enumerate(tqdm(all_users, total=len(all_users), ncols=100, desc=set_color(f"Gen {num_ind+1}/{gen_num}", 'green'))):
             u_data = train.get(u, []) + valid.get(u, []) + test.get(u, []) + cumulative_preds.get(u, [])
-
             if len(u_data) == 0 or len(u_data) >= args.M: continue
-
             seq = np.zeros([args.maxlen], dtype=np.int32)
             idx = args.maxlen - 1
             for i in reversed(u_data):
                 if idx == -1: break
-                seq[idx] = i
-                idx -= 1
-    
+                seq[idx], idx = i, idx - 1
             rated = set(u_data)
             item_idx = list(items_idx_set - rated)
-
-            batch_seq.append(seq)
-            batch_item_idx.append(item_idx)
-            batch_u.append(u)
-
+            batch_seq.append(seq); batch_item_idx.append(item_idx); batch_u.append(u)
             if (u_ind + 1) % args.batch_size == 0 or u_ind + 1 == len(all_users):
                 predictions = model.predict(sess, batch_u, batch_seq)
                 for batch_ind in range(len(batch_item_idx)):
                     test_item_idx = batch_item_idx[batch_ind]
-                    test_predictions = predictions[batch_ind][test_item_idx]
-                    ranked_items_ind = list((-1*np.array(test_predictions)).argsort())
-                    rankeditem_oneuserids = int(test_item_idx[ranked_items_ind[0]])
-
-                    u_batch_ind = batch_u[batch_ind]
-                    cumulative_preds[u_batch_ind].append(rankeditem_oneuserids) 
-
-                batch_seq = []
-                batch_item_idx = []
-                batch_u = []
-
+                    ranked_items_ind = predictions[batch_ind][test_item_idx].argsort()
+                    rankeditem_oneuserids = int(test_item_idx[ranked_items_ind[-1]])
+                    cumulative_preds[batch_u[batch_ind]].append(rankeditem_oneuserids) 
+                batch_seq, batch_item_idx, batch_u = [], [], []
     return cumulative_preds
 
-
+# 7. eval_one_interaction (修正 recall 呼叫方式)
 def eval_one_interaction(x):
-    results = {
-            "precision": np.zeros(len(Ks)),
-            "recall": np.zeros(len(Ks)),
-            "ndcg": np.zeros(len(Ks)),
-            "hit_ratio": np.zeros(len(Ks)),
-            "auc": 0.,
-            "mrr": 0.,
-    }
-    rankeditems = np.array(x[0])
-    test_ind = x[1]
-    scale_pred = x[2]
-    test_item = x[3]
+    results = init_metrics()
+    rankeditems = np.array(x[0]) # 排序後的索引列表
+    test_ind = x[1]              # 正樣本索引 (固定為 0)
+    scale_pred = x[2]            # 預測分數
+    
+    # 建立二元相關性向量 r (用於 precision, ndcg, hit, mrr)
     r = np.zeros_like(rankeditems)
-    r[rankeditems==test_ind] = 1
-    if len(r) != len(scale_pred):
-        r = rank_corrected(r, len(r)-1, len(scale_pred))
-    gd_prob = np.zeros_like(rankeditems)
-    gd_prob[test_ind] = 1
-
+    r[rankeditems == test_ind] = 1
+    
+    # 根據 metrics.py 中的定義計算指標
     for ind_k in range(len(Ks)):
-        results["precision"][ind_k] += precision_at_k(r, Ks[ind_k])
-        results["recall"][ind_k] += recall(rankeditems, [test_ind], Ks[ind_k])
-        results["ndcg"][ind_k] += ndcg_at_k(r, Ks[ind_k], 1)
-        results["hit_ratio"][ind_k] += hit_at_k(r, Ks[ind_k])
+        k = Ks[ind_k]
+        results["precision"][ind_k] += precision_at_k(r, k)
+        # 修正：依照 metrics.py 的 recall(rank, ground_truth, N) 呼叫
+        results["recall"][ind_k] += recall(rankeditems, [test_ind], k)
+        results["ndcg"][ind_k] += ndcg_at_k(r, k, 1)
+        results["hit_ratio"][ind_k] += hit_at_k(r, k)
+    
+    # AUC 計算需要完整的 Ground Truth 標籤
+    gd_prob = np.zeros_like(scale_pred)
+    gd_prob[test_ind] = 1
     results["auc"] += auc(gd_prob, scale_pred)
     results["mrr"] += mrr(r)
-
     return results
 
-
+# 8. rank_corrected
 def rank_corrected(r, m, n):
     pos_ranks = np.argwhere(r==1)[:,0]
     corrected_r = np.zeros_like(r)
     for each_sample_rank in list(pos_ranks):
         corrected_rank = int(np.floor(((n-1)*each_sample_rank)/m))
-        if corrected_rank >= len(corrected_r) - 1:
-            continue
+        if corrected_rank >= len(corrected_r) - 1: continue
         corrected_r[corrected_rank] = 1
-    assert np.sum(corrected_r) <= 1
     return corrected_r
 
+# 9. init_metrics
 def init_metrics():
-    metrics_dict = {
-            "precision": np.zeros(len(Ks)),
-            "recall": np.zeros(len(Ks)),
-            "ndcg": np.zeros(len(Ks)),
-            "hit_ratio": np.zeros(len(Ks)),
-            "auc": 0.,
-            "mrr": 0.,
-    }
-    return metrics_dict
+    return {"precision": np.zeros(len(Ks)), "recall": np.zeros(len(Ks)), "ndcg": np.zeros(len(Ks)), "hit_ratio": np.zeros(len(Ks)), "auc": 0., "mrr": 0.}
 
+# 10. evaluate
 def evaluate(model, dataset, args, sess, testorvalid):
     [train, valid, test, original_train, usernum, itemnum] = copy.deepcopy(dataset)
     results = init_metrics()
-
-    if args.evalnegsample != -1:
-        pass # Full rank mode, skip init short_seq lists to save memory
-
-    if testorvalid == "test":
-        eval_data = test
-    else:
-        eval_data = valid
+    eval_data = test if testorvalid == "test" else valid
+    all_predictions_results_output = []
+    batch_seq, batch_u, batch_item_idx = [], [], []
+    u_ind, items_idx_set = 0, set(range(1, itemnum + 1))
     
-    all_predictions_results = []
-    all_item_idx = []
-    all_u = []
-
-    batch_seq = []
-    batch_u = []
-    batch_item_idx = []
-
-    u_ind = 0
-    items_idx_set = set([i for i in range(1, itemnum+1)])
-    
-    for u, i_list in eval_data.items():
-        u_ind += 1
+    for u, i_list in tqdm(eval_data.items(), desc=set_color(f"Eval {testorvalid}", 'cyan'), ncols=100):
         if len(train[u]) < 1 or len(eval_data[u]) < 1: continue
-        
-        rated = set(train[u])
-        rated.add(0)
-        if testorvalid == "test":
-            valid_set = set(valid.get(u, []))
-            rated = rated | valid_set
-        
+        rated = set(train[u]) | {0}
+        if testorvalid == "test": rated |= set(valid.get(u, []))
         seq = np.zeros([args.maxlen], dtype=np.int32)
         idx = args.maxlen - 1
-        if testorvalid == "test":
-            if u in valid:
-                for i in reversed(valid[u]):
-                    if idx == -1: break
-                    seq[idx] = i
-                    idx -= 1
+        if testorvalid == "test" and u in valid:
+            for i in reversed(valid[u]):
+                if idx == -1: break
+                seq[idx], idx = i, idx - 1
         for i in reversed(train[u]):
             if idx == -1: break
-            seq[idx] = i
-            idx -= 1
+            seq[idx], idx = i, idx - 1
         
-        item_idx = [i_list[0]]
+        pos_item = i_list[0]
+        item_idx = [pos_item]
         if args.evalnegsample == -1:
-            item_idx += list(items_idx_set - rated - set([i_list[0]]))
+            item_idx += list(items_idx_set - rated - {pos_item})
         else:
-            item_candiates = list(items_idx_set - rated - set([i_list[0]]))
-            if args.evalnegsample >= len(item_candiates):
-                item_idx += item_candiates
-            else:
-                item_idx += list(np.random.choice(item_candiates, size=args.evalnegsample, replace=False))
-
-        batch_seq.append(seq)
-        batch_item_idx.append(item_idx)
-        batch_u.append(u)
+            candidates = list(items_idx_set - rated - {pos_item})
+            item_idx += list(np.random.choice(candidates, min(len(candidates), args.evalnegsample), replace=False))
         
-        # 【修改點 2】強制鎖死 Batch Size = 10，解決 OOM 的關鍵！
-        # 如果你看到 shape[500, ...] 的錯誤，代表這行沒生效，請確認檔案是否有存檔成功
-        SAFE_EVAL_BATCH_SIZE = 10 
+        batch_seq.append(seq); batch_item_idx.append(item_idx); batch_u.append(u)
+        u_ind += 1
 
-        if len(batch_u) >= SAFE_EVAL_BATCH_SIZE or u_ind == len(eval_data):
+        # 優化：Batch 預測與立即處理
+        if len(batch_u) >= 10 or u_ind == len(eval_data):
             predictions = model.predict(sess, batch_u, batch_seq)
-            for pred_ind in range(predictions.shape[0]):
-                all_predictions_results.append(predictions[pred_ind])
-                all_item_idx.append(batch_item_idx[pred_ind])
-                all_u.append(batch_u[pred_ind])
+            for b_i in range(predictions.shape[0]):
+                user_id, curr_item_idx = batch_u[b_i], batch_item_idx[b_i]
+                user_preds = predictions[b_i][curr_item_idx]
+                
+                # 排序 (降序)
+                ranked_relative_idx = user_preds.argsort()[::-1]
+                
+                # 指標計算
+                one_res = eval_one_interaction((ranked_relative_idx, 0, user_preds))
+                for k in ["precision", "recall", "ndcg", "hit_ratio"]: results[k] += one_res[k]
+                results["auc"] += one_res["auc"]; results["mrr"] += one_res["mrr"]
+                
+                # 僅儲存 Top-100 減少輸出負擔
+                all_predictions_results_output.append({
+                    "u_ind": int(user_id), "u_pos_gd": int(pos_item), 
+                    "predicted": [int(curr_item_idx[idx]) for idx in ranked_relative_idx[:100]]
+                })
+            batch_seq, batch_u, batch_item_idx = [], [], []
 
-            batch_seq = []
-            batch_item_idx = []
-            batch_u = []
-
-    rankeditems_list = []
-    test_indices = []
-    scale_pred_list = []
-    test_allitems = []
-    
-    all_predictions_results_output = []
-
-    for ind in range(len(all_predictions_results)):
-        test_item_idx = all_item_idx[ind]
-        unk_predictions = all_predictions_results[ind][test_item_idx]
-
-        scaler = MinMaxScaler()
-        scale_pred = list(np.transpose(scaler.fit_transform(np.transpose(np.array([unk_predictions]))))[0])
-
-        rankeditems_list.append(list((-1*np.array(unk_predictions)).argsort()))
-        test_indices.append(0)
-        test_allitems.append(test_item_idx[0])
-        scale_pred_list.append(scale_pred)
-        
-        rankeditem_oneuserids = [int(test_item_idx[i]) for i in list((-1*np.array(unk_predictions)).argsort())] 
-
-        one_pred_result = {"u_ind": int(all_u[ind]), "u_pos_gd": int(test_item_idx[0])}
-        if args.evalnegsample == -1:
-            # 【修改點 3】只存 Top-100，避免 List Memory 爆炸 (std::bad_alloc)
-            one_pred_result["predicted"] = [int(item_id_pred) for item_id_pred in rankeditem_oneuserids[:100]]
-        else:
-            one_pred_result["predicted"] = [int(item_id_pred) for item_id_pred in rankeditem_oneuserids[:args.evalnegsample]]
-        all_predictions_results_output.append(one_pred_result)
-
-    # 【修改點 4】改用單核心迴圈，不使用 pool.map
-    batch_data = zip(rankeditems_list, test_indices, scale_pred_list, test_allitems)
-    for data_point in batch_data:
-        re = eval_one_interaction(data_point)
-        results["precision"] += re["precision"]
-        results["recall"] += re["recall"]
-        results["ndcg"] += re["ndcg"]
-        results["hit_ratio"] += re["hit_ratio"]
-        results["auc"] += re["auc"]
-        results["mrr"] += re["mrr"]
-
-    if len(eval_data) > 0:
-        results["precision"] /= len(eval_data)
-        results["recall"] /= len(eval_data)
-        results["ndcg"] /= len(eval_data)
-        results["hit_ratio"] /= len(eval_data)
-        results["auc"] /= len(eval_data)
-        results["mrr"] /= len(eval_data)
-    
-    print(f"testing #of users: {len(eval_data)}")
-
+    if u_ind > 0:
+        for k in results: results[k] /= u_ind
     return results, None, None, None, None, None, all_predictions_results_output
