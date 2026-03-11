@@ -28,7 +28,12 @@ data/Grocery_and_Gourmet_Food/
 #log
 barec_finetune_Grocery_and_Gourmet_Food_fullrank.log
 barec_pretrain_Grocery_and_Gourmet_Food_gen.log
+fine_tuning_loss_Grocery_and_Gourmet_Food.txt
+
+
 barec_pretrain_Sports_and_Outdoors_gen.log
+barec_finetune_Sports_and_Outdoors_fullrank.log
+fine_tuning_loss_Sports_and_Outdoors.txt
 nohup.out
 
 #虛擬環境

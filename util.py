@@ -106,7 +106,7 @@ def data_augment(model, dataset, args, sess, gen_num):
             rated = set(u_data)
             item_idx = list(items_idx_set - rated)
             batch_seq.append(seq); batch_item_idx.append(item_idx); batch_u.append(u)
-            if (u_ind + 1) % args.batch_size == 0 or u_ind + 1 == len(all_users):
+            if len(batch_u) >= args.batch_size:
                 predictions = model.predict(sess, batch_u, batch_seq)
                 for batch_ind in range(len(batch_item_idx)):
                     test_item_idx = batch_item_idx[batch_ind]
@@ -114,6 +114,15 @@ def data_augment(model, dataset, args, sess, gen_num):
                     rankeditem_oneuserids = int(test_item_idx[ranked_items_ind[-1]])
                     cumulative_preds[batch_u[batch_ind]].append(rankeditem_oneuserids) 
                 batch_seq, batch_item_idx, batch_u = [], [], []
+        # flush remaining batch after iterating all users
+        if len(batch_u) > 0:
+            predictions = model.predict(sess, batch_u, batch_seq)
+            for batch_ind in range(len(batch_item_idx)):
+                test_item_idx = batch_item_idx[batch_ind]
+                ranked_items_ind = predictions[batch_ind][test_item_idx].argsort()
+                rankeditem_oneuserids = int(test_item_idx[ranked_items_ind[-1]])
+                cumulative_preds[batch_u[batch_ind]].append(rankeditem_oneuserids)
+            batch_seq, batch_item_idx, batch_u = [], [], []
     return cumulative_preds
 
 # 7. eval_one_interaction (修正 recall 呼叫方式)
